@@ -179,7 +179,13 @@ async function syncToGithub(reason) {
     showSyncToast("success", "GitHub 자동 반영이 완료되었습니다.");
   } catch (err) {
     console.error(err);
-    showSyncToast("error", "GitHub 자동 반영 실패: 로컬 저장만 완료되었습니다.", true);
+    const detail = String(err?.message || "").trim();
+    const shortDetail = detail ? ` (${detail.slice(0, 140)})` : "";
+    showSyncToast(
+      "error",
+      `GitHub 자동 반영 실패: 로컬 저장만 완료되었습니다.${shortDetail}`,
+      true,
+    );
   } finally {
     syncInFlight = false;
   }
