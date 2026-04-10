@@ -480,7 +480,9 @@ function normalizeRolePhone(v) {
 
 function extractFirstPhone(v) {
   const s = String(v || "");
-  const m = s.match(/(?:01[0-9]-?\d{3,4}-?\d{4})|(?:0\d{1,2}-?\d{3,4}-?\d{4})/);
+  const m = s.match(
+    /(?:01[0-9]-?\d{3,4}-?\d{4})|(?:0\d{1,2}-?\d{3,4}-?\d{4})|(?:1[568]\d{2}-?\d{4})/,
+  );
   return m ? m[0].replace(/\s+/g, "") : "";
 }
 
@@ -564,9 +566,9 @@ function textChip(label, text) {
   return `<button class="chip" type="button" data-action="show-text" data-popup-title="${escapeHtml(label)}" data-popup-content="${encodeURIComponent(value)}">${escapeHtml(label)}</button>`;
 }
 
-function factBox(label, value) {
+function factBox(label, value, dialable = true) {
   const raw = safeText(value);
-  const phone = extractFirstPhone(raw);
+  const phone = dialable ? extractFirstPhone(raw) : "";
   return `
     <button
       class="fact fact--btn"
@@ -575,6 +577,7 @@ function factBox(label, value) {
       data-popup-title="${escapeHtml(label)}"
       data-popup-content="${encodeURIComponent(raw)}"
       data-popup-phone="${escapeHtml(phone)}"
+      data-popup-dialable="${dialable ? "1" : "0"}"
     >
       <div class="fact__k">${escapeHtml(label)}</div>
       <div class="fact__v" title="${escapeHtml(raw)}">${escapeHtml(raw)}</div>
@@ -633,10 +636,10 @@ function render() {
 
           <div class="card__body">
             <div class="facts">
-              ${factBox("고객센터", c.callCenter)}
-              ${factBox("인콜 모니터링", c.inCallMonitoring)}
-              ${factBox("전산 헬프데스크", c.helpdesk)}
-              ${factBox("청구팩스", c.claimFax)}
+              ${factBox("고객센터", c.callCenter, true)}
+              ${factBox("인콜 모니터링", c.inCallMonitoring, true)}
+              ${factBox("전산 헬프데스크", c.helpdesk, true)}
+              ${factBox("청구팩스", c.claimFax, false)}
             </div>
 
             <div class="links">
@@ -760,7 +763,8 @@ els.grid.addEventListener("click", (e) => {
     const content = decodeURIComponent(btn.dataset.popupContent || "");
     const phone = btn.dataset.popupPhone || extractFirstPhone(content);
     const isFactButton = btn.classList.contains("fact--btn");
-    if (phone && isFactButton) {
+    const isDialableFact = isFactButton && btn.dataset.popupDialable === "1";
+    if (phone && isDialableFact) {
       window.location.href = `tel:${digitsOnlyPhone(phone)}`;
       return;
     }
