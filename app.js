@@ -1,7 +1,7 @@
 import { BASE_COMPANIES, CATEGORIES } from "./data.js";
 
 const STORAGE_KEY = "insurance-company-hub:v1";
-const CHRURCK_BASE = "http://www.chrurck.com";
+const CHRURCK_BASE = "https://www.chrurck.com";
 const SYNC_ENDPOINT = "/api/sync-data";
 const SYNC_KEY_SESSION = "insurance-company-hub:sync-key";
 
