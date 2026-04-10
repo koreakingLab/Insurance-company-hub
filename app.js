@@ -1,7 +1,9 @@
-import { BASE_COMPANIES } from "./data.js";
+import { BASE_COMPANIES, CATEGORIES } from "./data.js";
 
 const STORAGE_KEY = "insurance-company-hub:v1";
 const CHRURCK_BASE = "http://www.chrurck.com";
+const SYNC_ENDPOINT = "/api/sync-data";
+const SYNC_KEY_SESSION = "insurance-company-hub:sync-key";
 
 // Original logo+name images from source page
 const SOURCE_LOGOS = {
@@ -18,7 +20,7 @@ const SOURCE_LOGOS = {
   "hanwha-nonlife": `${CHRURCK_BASE}/images/kor15r-18-0402/sub/fire_logo10.jpg`,
   "hyundai-nonlife": `${CHRURCK_BASE}/images/kor15r-18-0402/sub/fire_logo11.jpg`,
   "heungkuk-fire": `${CHRURCK_BASE}/images/kor15r-18-0402/sub/fire_logo12.jpg`,
-  "chubb-nonlife": `${CHRURCK_BASE}/images/kor15r-18-0402/sub/fire_logo13.jpg`,
+  "chubb-nonlife": "https://logo.clearbit.com/chubb.com",
   "axa-nonlife": `${CHRURCK_BASE}/images/kor15r-18-0402/sub/fire_logo14.jpg`,
 
   // 생명보험 1~21
@@ -64,15 +66,23 @@ const els = {
   closeDialogBtn: document.getElementById("closeDialogBtn"),
   cancelBtn: document.getElementById("cancelBtn"),
   deleteBtn: document.getElementById("deleteBtn"),
+  textDialog: document.getElementById("textDialog"),
+  textDialogTitle: document.getElementById("textDialogTitle"),
+  textDialogBody: document.getElementById("textDialogBody"),
+  closeTextDialogBtn: document.getElementById("closeTextDialogBtn"),
+  syncToast: document.getElementById("syncToast"),
   tabs: Array.from(document.querySelectorAll(".tab")),
 };
 
 let state = {
-  category: "all",
+  category: "nonlife",
   query: "",
   companies: loadCompanies(),
   editingId: null,
 };
+
+let syncInFlight = false;
+let syncToastTimer = null;
 
 function loadCompanies() {
   try {
@@ -90,6 +100,91 @@ function saveCompanies(companies) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(companies));
 }
 
+function getCategoryList() {
+  if (Array.isArray(CATEGORIES) && CATEGORIES.length) return CATEGORIES;
+  return [
+    { id: "nonlife", label: "손해보험" },
+    { id: "life", label: "생명보험" },
+    { id: "mutual", label: "공제회사" },
+  ];
+}
+
+function askSyncKey() {
+  const cached = sessionStorage.getItem(SYNC_KEY_SESSION);
+  if (cached) return cached;
+  const typed = prompt(
+    "GitHub 자동 반영용 관리자 키를 입력하세요.\n(취소하면 이번 변경은 로컬에만 저장됩니다)",
+  );
+  const key = String(typed || "").trim();
+  if (!key) return "";
+  sessionStorage.setItem(SYNC_KEY_SESSION, key);
+  return key;
+}
+
+function showSyncToast(type, message, keep = false) {
+  if (!els.syncToast) return;
+  if (syncToastTimer) {
+    clearTimeout(syncToastTimer);
+    syncToastTimer = null;
+  }
+  els.syncToast.className = `syncToast syncToast--${type}`;
+  els.syncToast.textContent = message;
+  if (!keep) {
+    syncToastTimer = window.setTimeout(() => {
+      els.syncToast.className = "syncToast is-hidden";
+      els.syncToast.textContent = "";
+    }, 2800);
+  }
+}
+
+async function syncToGithub(reason) {
+  if (syncInFlight) return;
+  syncInFlight = true;
+  showSyncToast("loading", "GitHub 자동 반영 중...", true);
+  try {
+    const payload = {
+      companies: state.companies,
+      categories: getCategoryList(),
+      reason,
+    };
+
+    let res = await fetch(SYNC_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    if (res.status === 401) {
+      showSyncToast("loading", "관리자 키를 입력하면 GitHub 반영을 계속합니다.", true);
+      const key = askSyncKey();
+      if (!key) {
+        showSyncToast("error", "관리자 키 미입력: 로컬 저장만 완료되었습니다.");
+        syncInFlight = false;
+        return;
+      }
+      res = await fetch(SYNC_ENDPOINT, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-sync-key": key,
+        },
+        body: JSON.stringify(payload),
+      });
+    }
+
+    if (!res.ok) {
+      const msg = await res.text();
+      throw new Error(msg || `sync failed: ${res.status}`);
+    }
+    showSyncToast("success", "GitHub 자동 반영이 완료되었습니다.");
+  } catch (err) {
+    console.error(err);
+    showSyncToast("error", "GitHub 자동 반영 실패: 로컬 저장만 완료되었습니다.", true);
+  } finally {
+    syncInFlight = false;
+  }
+}
+
 function normalizeCompanies(list) {
   return list.map((c, idx) => ({
     id: String(c?.id || `custom-${idx}-${Date.now()}`),
@@ -104,20 +199,34 @@ function normalizeCompanies(list) {
     claimFax: c?.claimFax || "",
     termsUrl: c?.termsUrl || "",
     claimFormUrl: c?.claimFormUrl || "",
+    branchCode: c?.branchCode || "",
+    assignee: c?.assignee || "",
+    generalAffairsText:
+      c?.generalAffairsText ||
+      [c?.roles?.admin?.name, c?.roles?.admin?.phone].filter(Boolean).join(" / "),
+    noteText: c?.noteText || "",
     roles: {
       branchManager: {
         name: c?.roles?.branchManager?.name || "",
         phone: c?.roles?.branchManager?.phone || "",
       },
-      manager: {
-        name: c?.roles?.manager?.name || "",
-        phone: c?.roles?.manager?.phone || "",
+      viceBranchManager: {
+        name: c?.roles?.viceBranchManager?.name || "",
+        phone: c?.roles?.viceBranchManager?.phone || "",
       },
-      admin: {
-        name: c?.roles?.admin?.name || "",
-        phone: c?.roles?.admin?.phone || "",
-      },
+      managers: normalizeManagers(c?.roles),
     },
+  }));
+}
+
+function normalizeManagers(roles) {
+  const fromArray = Array.isArray(roles?.managers) ? roles.managers : [];
+  const fromLegacy = roles?.manager ? [roles.manager] : [];
+  const source = [...fromArray, ...fromLegacy].slice(0, 3);
+  while (source.length < 3) source.push({});
+  return source.map((m) => ({
+    name: m?.name || "",
+    phone: m?.phone || "",
   }));
 }
 
@@ -184,6 +293,8 @@ function openDialog(company) {
   setFormValue(form, "claimFax", company?.claimFax || "");
   setFormValue(form, "termsUrl", company?.termsUrl || "");
   setFormValue(form, "claimFormUrl", company?.claimFormUrl || "");
+  setFormValue(form, "generalAffairsText", company?.generalAffairsText || "");
+  setFormValue(form, "noteText", company?.noteText || "");
 
   setFormValue(
     form,
@@ -195,14 +306,46 @@ function openDialog(company) {
     "roles.branchManager.phone",
     company?.roles?.branchManager?.phone || "",
   );
-  setFormValue(form, "roles.manager.name", company?.roles?.manager?.name || "");
   setFormValue(
     form,
-    "roles.manager.phone",
-    company?.roles?.manager?.phone || "",
+    "roles.viceBranchManager.name",
+    company?.roles?.viceBranchManager?.name || "",
   );
-  setFormValue(form, "roles.admin.name", company?.roles?.admin?.name || "");
-  setFormValue(form, "roles.admin.phone", company?.roles?.admin?.phone || "");
+  setFormValue(
+    form,
+    "roles.viceBranchManager.phone",
+    company?.roles?.viceBranchManager?.phone || "",
+  );
+  setFormValue(
+    form,
+    "roles.managers.0.name",
+    company?.roles?.managers?.[0]?.name || "",
+  );
+  setFormValue(
+    form,
+    "roles.managers.0.phone",
+    company?.roles?.managers?.[0]?.phone || "",
+  );
+  setFormValue(
+    form,
+    "roles.managers.1.name",
+    company?.roles?.managers?.[1]?.name || "",
+  );
+  setFormValue(
+    form,
+    "roles.managers.1.phone",
+    company?.roles?.managers?.[1]?.phone || "",
+  );
+  setFormValue(
+    form,
+    "roles.managers.2.name",
+    company?.roles?.managers?.[2]?.name || "",
+  );
+  setFormValue(
+    form,
+    "roles.managers.2.phone",
+    company?.roles?.managers?.[2]?.phone || "",
+  );
 
   els.editDialog.showModal();
 }
@@ -229,6 +372,7 @@ function buildCompanyFromForm(form, fallbackId) {
     getFormValue(form, "id").trim() ||
     fallbackId ||
     `custom-${crypto.randomUUID()}`;
+  const existing = state.companies.find((c) => c.id === id);
   return normalizeCompanies([
     {
       id,
@@ -243,19 +387,33 @@ function buildCompanyFromForm(form, fallbackId) {
       claimFax: getFormValue(form, "claimFax"),
       termsUrl: getFormValue(form, "termsUrl"),
       claimFormUrl: getFormValue(form, "claimFormUrl"),
+      branchCode: existing?.branchCode || "",
+      assignee: existing?.assignee || "",
+      generalAffairsText: getFormValue(form, "generalAffairsText"),
+      noteText: getFormValue(form, "noteText"),
       roles: {
         branchManager: {
           name: getFormValue(form, "roles.branchManager.name"),
           phone: getFormValue(form, "roles.branchManager.phone"),
         },
-        manager: {
-          name: getFormValue(form, "roles.manager.name"),
-          phone: getFormValue(form, "roles.manager.phone"),
+        viceBranchManager: {
+          name: getFormValue(form, "roles.viceBranchManager.name"),
+          phone: getFormValue(form, "roles.viceBranchManager.phone"),
         },
-        admin: {
-          name: getFormValue(form, "roles.admin.name"),
-          phone: getFormValue(form, "roles.admin.phone"),
-        },
+        managers: [
+          {
+            name: getFormValue(form, "roles.managers.0.name"),
+            phone: getFormValue(form, "roles.managers.0.phone"),
+          },
+          {
+            name: getFormValue(form, "roles.managers.1.name"),
+            phone: getFormValue(form, "roles.managers.1.phone"),
+          },
+          {
+            name: getFormValue(form, "roles.managers.2.name"),
+            phone: getFormValue(form, "roles.managers.2.phone"),
+          },
+        ],
       },
     },
   ])[0];
@@ -298,6 +456,125 @@ function escapeHtml(s) {
     .replaceAll("'", "&#039;");
 }
 
+function roleContact(role) {
+  if (!role) return "—";
+  const name = normalizeRoleName(role.name);
+  const phone = normalizeRolePhone(role.phone);
+  return [name, phone].filter(Boolean).join(" / ") || "—";
+}
+
+function normalizeRoleName(v) {
+  return String(v || "")
+    .replace(/^[\\s\\-–—_*•]+/g, "")
+    .replace(/[\\s\\-–—_*•]+$/g, "")
+    .replace(/\\s{2,}/g, " ")
+    .trim();
+}
+
+function normalizeRolePhone(v) {
+  const s = String(v || "");
+  const m = s.match(/(?:01[0-9]-?\\d{3,4}-?\\d{4})|(?:0\\d{1,2}-?\\d{3,4}-?\\d{4})/);
+  if (m) return m[0].replace(/\\s+/g, "");
+  return s.replace(/\\s{2,}/g, " ").trim();
+}
+
+function renderBranchRole(company) {
+  const branch = company?.roles?.branchManager || {};
+  const vice = company?.roles?.viceBranchManager || {};
+  const hasBranch = Boolean((branch.name || "").trim() || (branch.phone || "").trim());
+  const hasVice = Boolean((vice.name || "").trim() || (vice.phone || "").trim());
+
+  if (hasBranch && hasVice) {
+    return `
+      <div class="roleLine roleLine--dropdown">
+        <b>지점장</b>
+        <div class="roleSelectWrap">
+          <span class="roleSubIcon is-hidden" aria-hidden="true">부</span>
+          <select class="roleSelect" aria-label="지점장 또는 부지점장 선택" data-sub-icon-target="1">
+            <option value="${escapeHtml(roleContact(branch))}">${escapeHtml(roleContact(branch))}</option>
+            <option value="${escapeHtml(roleContact(vice))}">${escapeHtml(roleContact(vice))}</option>
+          </select>
+        </div>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="roleLine">
+      <b>지점장</b>
+      <span>${hasVice && !hasBranch ? `<span class="roleSubIcon roleSubIcon--inline" aria-hidden="true">부</span> ` : ""}${escapeHtml(hasBranch ? roleContact(branch) : hasVice ? roleContact(vice) : "—")}</span>
+    </div>
+  `;
+}
+
+function renderManagerRole(company) {
+  const managers = (company?.roles?.managers || []).filter(
+    (m) => (m?.name || "").trim() || (m?.phone || "").trim(),
+  );
+  if (managers.length >= 2) {
+    return `
+      <div class="roleLine roleLine--dropdown">
+        <b>매니저</b>
+        <div class="roleSelectWrap">
+          <span class="roleSubIcon is-hidden" aria-hidden="true">부</span>
+          <select class="roleSelect" aria-label="매니저 선택" data-sub-icon-target="1">
+          ${managers
+            .map(
+              (m) =>
+                `<option value="${escapeHtml(roleContact(m))}">${escapeHtml(roleContact(m))}</option>`,
+            )
+            .join("")}
+          </select>
+        </div>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="roleLine">
+      <b>매니저</b>
+      <span>${escapeHtml(managers[0] ? roleContact(managers[0]) : "—")}</span>
+    </div>
+  `;
+}
+
+function textChip(label, text) {
+  const value = String(text ?? "").trim();
+  if (!value) return "";
+  return `<button class="chip" type="button" data-action="show-text" data-popup-title="${escapeHtml(label)}" data-popup-content="${encodeURIComponent(value)}">${escapeHtml(label)}</button>`;
+}
+
+function factBox(label, value) {
+  const raw = safeText(value);
+  return `
+    <button
+      class="fact fact--btn"
+      type="button"
+      data-action="show-text"
+      data-popup-title="${escapeHtml(label)}"
+      data-popup-content="${encodeURIComponent(raw)}"
+    >
+      <div class="fact__k">${escapeHtml(label)}</div>
+      <div class="fact__v" title="${escapeHtml(raw)}">${escapeHtml(raw)}</div>
+    </button>
+  `;
+}
+
+function openTextDialog(title, body) {
+  els.textDialogTitle.textContent = `${title} 상세`;
+  els.textDialogBody.innerHTML = `
+    <div class="textDialog__section">
+      <div class="textDialog__contentLabel">${escapeHtml(title)} 내용</div>
+      <div class="textDialog__contentBox">${escapeHtml(body)}</div>
+    </div>
+  `;
+  els.textDialog.showModal();
+}
+
+function closeTextDialog() {
+  if (els.textDialog.open) els.textDialog.close();
+}
+
 function render() {
   const list = filteredCompanies();
   els.resultCount.textContent = `${list.length}개 표시`;
@@ -305,24 +582,29 @@ function render() {
   els.grid.innerHTML = list
     .map((c) => {
       const logoUrl = safeHref(resolveLogoUrl(c));
-      const subtitle = categoryLabel(c.categoryId);
+      const homepageUrl = safeHref(c.homepageUrl);
+      const codeAndAssignee = [String(c.branchCode || "").trim(), String(c.assignee || "").trim()]
+        .filter(Boolean)
+        .join(" / ");
       const companyName = escapeHtml(c.name);
       const fallback = escapeHtml(initials(c.name));
+      const logoInner = logoUrl
+        ? `<img class="logoImg" src="${escapeHtml(logoUrl)}" alt="${companyName} 로고" loading="lazy" referrerpolicy="no-referrer" data-fallback="${fallback}" />`
+        : `<div class="fallbackLogo" aria-hidden="true">${fallback}</div>`;
+      const logoBlock = homepageUrl
+        ? `<a class="logoLink" href="${escapeHtml(homepageUrl)}" target="_blank" rel="noopener noreferrer" aria-label="${companyName} 홈페이지 바로가기">${logoInner}</a>`
+        : logoInner;
 
       return `
         <article class="card" data-id="${escapeHtml(c.id)}">
           <div class="card__head">
             <div class="identity">
               <div class="logoWrap" aria-label="${companyName} 로고">
-                ${
-                  logoUrl
-                    ? `<img class="logoImg" src="${escapeHtml(logoUrl)}" alt="${companyName} 로고" loading="lazy" referrerpolicy="no-referrer" data-fallback="${fallback}" />`
-                    : `<div class="fallbackLogo" aria-hidden="true">${fallback}</div>`
-                }
+                ${logoBlock}
               </div>
               <div class="nameBlock">
                 <div class="name">${companyName}</div>
-                <div class="subline">${escapeHtml(subtitle)}</div>
+                <div class="subline">${escapeHtml(codeAndAssignee || " ")}</div>
               </div>
             </div>
             <div class="btnRow">
@@ -332,58 +614,23 @@ function render() {
 
           <div class="card__body">
             <div class="facts">
-              <div class="fact">
-                <div class="fact__k">고객센터</div>
-                <div class="fact__v">${escapeHtml(safeText(c.callCenter))}</div>
-              </div>
-              <div class="fact">
-                <div class="fact__k">인콜 모니터링</div>
-                <div class="fact__v">${escapeHtml(
-                  safeText(c.inCallMonitoring),
-                )}</div>
-              </div>
-              <div class="fact">
-                <div class="fact__k">전산 헬프데스크</div>
-                <div class="fact__v">${escapeHtml(safeText(c.helpdesk))}</div>
-              </div>
-              <div class="fact">
-                <div class="fact__k">청구팩스</div>
-                <div class="fact__v">${escapeHtml(safeText(c.claimFax))}</div>
-              </div>
+              ${factBox("고객센터", c.callCenter)}
+              ${factBox("인콜 모니터링", c.inCallMonitoring)}
+              ${factBox("전산 헬프데스크", c.helpdesk)}
+              ${factBox("청구팩스", c.claimFax)}
             </div>
 
             <div class="links">
-              ${chip("홈페이지", c.homepageUrl, "primary")}
-              ${chip("전산링크", c.systemLinkUrl, "primary")}
-              ${chip("약관확인", c.termsUrl)}
+              ${chip("전산", c.systemLinkUrl, "primary")}
+              ${chip("약관", c.termsUrl)}
               ${chip("보험금청구양식", c.claimFormUrl)}
+              ${textChip("총무", c.generalAffairsText)}
+              ${textChip("비고", c.noteText)}
             </div>
 
             <div class="roles" aria-label="담당자 연락처">
-              <div class="roleLine">
-                <b>지점장</b>
-                <span>${escapeHtml(
-                  [c.roles.branchManager.name, c.roles.branchManager.phone]
-                    .filter(Boolean)
-                    .join(" / ") || "—",
-                )}</span>
-              </div>
-              <div class="roleLine">
-                <b>매니저</b>
-                <span>${escapeHtml(
-                  [c.roles.manager.name, c.roles.manager.phone]
-                    .filter(Boolean)
-                    .join(" / ") || "—",
-                )}</span>
-              </div>
-              <div class="roleLine">
-                <b>총무</b>
-                <span>${escapeHtml(
-                  [c.roles.admin.name, c.roles.admin.phone]
-                    .filter(Boolean)
-                    .join(" / ") || "—",
-                )}</span>
-              </div>
+              ${renderBranchRole(c)}
+              ${renderManagerRole(c)}
             </div>
           </div>
         </article>
@@ -392,6 +639,7 @@ function render() {
     .join("");
 
   wireLogoFallbacks();
+  wireRoleSelectIcons();
 }
 
 function wireLogoFallbacks() {
@@ -413,6 +661,26 @@ function wireLogoFallbacks() {
   }
 }
 
+function wireRoleSelectIcons() {
+  const selects = els.grid.querySelectorAll("select.roleSelect[data-sub-icon-target]");
+  for (const select of selects) {
+    const wrap = select.closest(".roleSelectWrap");
+    const icon = wrap?.querySelector(".roleSubIcon");
+    if (!icon) continue;
+    const target = Number(select.dataset.subIconTarget || "1");
+    const refresh = () => {
+      icon.classList.toggle("is-hidden", select.selectedIndex < target);
+    };
+    if (select.dataset.wired === "1") {
+      refresh();
+      continue;
+    }
+    select.dataset.wired = "1";
+    select.addEventListener("change", refresh);
+    refresh();
+  }
+}
+
 function getCompanyById(id) {
   return state.companies.find((c) => c.id === id) || null;
 }
@@ -425,12 +693,14 @@ function upsertCompany(updated) {
   state.companies = next;
   saveCompanies(state.companies);
   render();
+  void syncToGithub("upsert");
 }
 
 function deleteCompany(id) {
   state.companies = state.companies.filter((c) => c.id !== id);
   saveCompanies(state.companies);
   render();
+  void syncToGithub("delete");
 }
 
 els.tabs.forEach((t) => {
@@ -448,6 +718,12 @@ els.grid.addEventListener("click", (e) => {
   const btn = e.target.closest("[data-action]");
   if (!btn) return;
   const action = btn.dataset.action;
+  if (action === "show-text") {
+    const title = btn.dataset.popupTitle || "상세";
+    const content = decodeURIComponent(btn.dataset.popupContent || "");
+    openTextDialog(title, content);
+    return;
+  }
   const card = btn.closest(".card");
   const id = card?.dataset?.id;
   if (!id) return;
@@ -472,10 +748,16 @@ els.addBtn.addEventListener("click", () => {
     claimFax: "",
     termsUrl: "",
     claimFormUrl: "",
+    generalAffairsText: "",
+    noteText: "",
     roles: {
       branchManager: { name: "", phone: "" },
-      manager: { name: "", phone: "" },
-      admin: { name: "", phone: "" },
+      viceBranchManager: { name: "", phone: "" },
+      managers: [
+        { name: "", phone: "" },
+        { name: "", phone: "" },
+        { name: "", phone: "" },
+      ],
     },
   });
 });
@@ -487,11 +769,14 @@ els.resetBtn.addEventListener("click", () => {
   if (!ok) return;
   localStorage.removeItem(STORAGE_KEY);
   state.companies = structuredClone(BASE_COMPANIES);
+  saveCompanies(state.companies);
   render();
+  void syncToGithub("reset");
 });
 
 els.closeDialogBtn.addEventListener("click", closeDialog);
 els.cancelBtn.addEventListener("click", closeDialog);
+els.closeTextDialogBtn.addEventListener("click", closeTextDialog);
 
 els.deleteBtn.addEventListener("click", () => {
   const id = getFormValue(els.editForm, "id").trim();

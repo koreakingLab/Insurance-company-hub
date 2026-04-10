@@ -11,6 +11,7 @@
 
     <header class="top">
       <div class="container">
+        <div id="syncToast" class="syncToast is-hidden" role="status" aria-live="polite"></div>
         <div class="top__row">
           <div class="brand">
             <div class="brand__logo" aria-hidden="true">i</div>
@@ -32,12 +33,9 @@
             <button
               class="tab is-active"
               type="button"
-              data-category="all"
+              data-category="nonlife"
               aria-current="true"
             >
-              전체
-            </button>
-            <button class="tab" type="button" data-category="nonlife">
               손해보험
             </button>
             <button class="tab" type="button" data-category="life">
@@ -45,6 +43,9 @@
             </button>
             <button class="tab" type="button" data-category="mutual">
               공제회사
+            </button>
+            <button class="tab" type="button" data-category="all">
+              전체
             </button>
           </nav>
 
@@ -157,21 +158,56 @@
             </div>
 
             <div class="field">
-              <label class="field__label">매니저 이름</label>
-              <input class="field__input" name="roles.manager.name" />
+              <label class="field__label">부지점장 이름</label>
+              <input class="field__input" name="roles.viceBranchManager.name" />
             </div>
             <div class="field">
-              <label class="field__label">매니저 연락처</label>
-              <input class="field__input" name="roles.manager.phone" />
+              <label class="field__label">부지점장 연락처</label>
+              <input class="field__input" name="roles.viceBranchManager.phone" />
             </div>
 
             <div class="field">
-              <label class="field__label">총무 이름</label>
-              <input class="field__input" name="roles.admin.name" />
+              <label class="field__label">매니저1 이름</label>
+              <input class="field__input" name="roles.managers.0.name" />
             </div>
             <div class="field">
-              <label class="field__label">총무 연락처</label>
-              <input class="field__input" name="roles.admin.phone" />
+              <label class="field__label">매니저1 연락처</label>
+              <input class="field__input" name="roles.managers.0.phone" />
+            </div>
+
+            <div class="field">
+              <label class="field__label">매니저2 이름</label>
+              <input class="field__input" name="roles.managers.1.name" />
+            </div>
+            <div class="field">
+              <label class="field__label">매니저2 연락처</label>
+              <input class="field__input" name="roles.managers.1.phone" />
+            </div>
+
+            <div class="field">
+              <label class="field__label">매니저3 이름</label>
+              <input class="field__input" name="roles.managers.2.name" />
+            </div>
+            <div class="field">
+              <label class="field__label">매니저3 연락처</label>
+              <input class="field__input" name="roles.managers.2.phone" />
+            </div>
+
+            <div class="field field--wide">
+              <label class="field__label">총무</label>
+              <input
+                class="field__input"
+                name="generalAffairsText"
+                placeholder="총무 관련 텍스트를 입력하세요"
+              />
+            </div>
+            <div class="field field--wide">
+              <label class="field__label">비고</label>
+              <input
+                class="field__input"
+                name="noteText"
+                placeholder="비고 텍스트를 입력하세요"
+              />
             </div>
           </div>
         </div>
@@ -190,6 +226,18 @@
     <button id="addBtn" class="fab" type="button" aria-label="보험회사 추가">
       + 추가
     </button>
+
+    <dialog id="textDialog" class="textDialog">
+      <div class="textDialog__panel">
+        <div class="textDialog__head">
+          <div id="textDialogTitle" class="textDialog__title">상세 내용</div>
+          <button id="closeTextDialogBtn" class="iconBtn" type="button" aria-label="닫기">
+            ✕
+          </button>
+        </div>
+        <div id="textDialogBody" class="textDialog__body"></div>
+      </div>
+    </dialog>
 
     <script type="module" src="./app.js"></script>
   </body>
