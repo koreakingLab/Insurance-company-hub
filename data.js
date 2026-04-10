@@ -108,7 +108,7 @@ export const BASE_COMPANIES = [
         },
         {
           "name": "허혜영",
-          "phone": "05-181-2037"
+          "phone": "0505-181-2037"
         },
         {
           "name": "",
@@ -459,7 +459,7 @@ export const BASE_COMPANIES = [
     "generalAffairsText": "박조은 총무\nT.02-522-8639\n청약서 팩스 0504-3764-6752\n동의서 팩스 02-6355-2500\njojo2900@nate.com",
     "noteText": "일반보험 없음\n전산 헬프데스크 - 1660-4290\n인콜 모니터링 T.1660-4590\n콜센터 T.1566-3000",
     "branchCode": "본사 소속",
-    "assignee": "하나손보 수도권 2사업단 수도권2-1지점"
+    "assignee": "수도권2사업단 2-1지점"
   },
   {
     "id": "hanwha-nonlife",
