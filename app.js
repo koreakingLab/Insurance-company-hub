@@ -478,6 +478,24 @@ function normalizeRolePhone(v) {
   return s.replace(/\\s{2,}/g, " ").trim();
 }
 
+function extractFirstPhone(v) {
+  const s = String(v || "");
+  const m = s.match(/(?:01[0-9]-?\\d{3,4}-?\\d{4})|(?:0\\d{1,2}-?\\d{3,4}-?\\d{4})/);
+  return m ? m[0].replace(/\\s+/g, "") : "";
+}
+
+function digitsOnlyPhone(v) {
+  return String(v || "").replace(/[^\\d]/g, "");
+}
+
+function roleContactHtml(role) {
+  const name = normalizeRoleName(role?.name || "");
+  const phone = normalizeRolePhone(role?.phone || "");
+  if (!name && !phone) return "—";
+  if (!phone) return escapeHtml(name);
+  return `${escapeHtml(name)} / <a class="phoneLink" href="tel:${digitsOnlyPhone(phone)}">${escapeHtml(phone)}</a>`;
+}
+
 function renderBranchRole(company) {
   const branch = company?.roles?.branchManager || {};
   const vice = company?.roles?.viceBranchManager || {};
@@ -485,15 +503,17 @@ function renderBranchRole(company) {
   const hasVice = Boolean((vice.name || "").trim() || (vice.phone || "").trim());
 
   if (hasBranch && hasVice) {
+    const selectId = `branch-select-${escapeHtml(company.id)}`;
     return `
       <div class="roleLine roleLine--dropdown">
         <b>지점장</b>
         <div class="roleSelectWrap">
           <span class="roleSubIcon is-hidden" aria-hidden="true">부</span>
-          <select class="roleSelect" aria-label="지점장 또는 부지점장 선택" data-sub-icon-target="1">
+          <select id="${selectId}" class="roleSelect" aria-label="지점장 또는 부지점장 선택" data-sub-icon-target="1">
             <option value="${escapeHtml(roleContact(branch))}">${escapeHtml(roleContact(branch))}</option>
             <option value="${escapeHtml(roleContact(vice))}">${escapeHtml(roleContact(vice))}</option>
           </select>
+          <button class="callBtn" type="button" data-action="call-selected" data-target-id="${selectId}" aria-label="지점장 전화">전화</button>
         </div>
       </div>
     `;
@@ -502,7 +522,7 @@ function renderBranchRole(company) {
   return `
     <div class="roleLine">
       <b>지점장</b>
-      <span>${hasVice && !hasBranch ? `<span class="roleSubIcon roleSubIcon--inline" aria-hidden="true">부</span> ` : ""}${escapeHtml(hasBranch ? roleContact(branch) : hasVice ? roleContact(vice) : "—")}</span>
+      <span>${hasVice && !hasBranch ? `<span class="roleSubIcon roleSubIcon--inline" aria-hidden="true">부</span> ` : ""}${hasBranch ? roleContactHtml(branch) : hasVice ? roleContactHtml(vice) : "—"}</span>
     </div>
   `;
 }
@@ -512,12 +532,13 @@ function renderManagerRole(company) {
     (m) => (m?.name || "").trim() || (m?.phone || "").trim(),
   );
   if (managers.length >= 2) {
+    const selectId = `manager-select-${escapeHtml(company.id)}`;
     return `
       <div class="roleLine roleLine--dropdown">
         <b>매니저</b>
         <div class="roleSelectWrap">
           <span class="roleSubIcon is-hidden" aria-hidden="true">부</span>
-          <select class="roleSelect" aria-label="매니저 선택" data-sub-icon-target="1">
+          <select id="${selectId}" class="roleSelect" aria-label="매니저 선택" data-sub-icon-target="1">
           ${managers
             .map(
               (m) =>
@@ -525,6 +546,7 @@ function renderManagerRole(company) {
             )
             .join("")}
           </select>
+          <button class="callBtn" type="button" data-action="call-selected" data-target-id="${selectId}" aria-label="매니저 전화">전화</button>
         </div>
       </div>
     `;
@@ -533,7 +555,7 @@ function renderManagerRole(company) {
   return `
     <div class="roleLine">
       <b>매니저</b>
-      <span>${escapeHtml(managers[0] ? roleContact(managers[0]) : "—")}</span>
+      <span>${managers[0] ? roleContactHtml(managers[0]) : "—"}</span>
     </div>
   `;
 }
@@ -546,6 +568,14 @@ function textChip(label, text) {
 
 function factBox(label, value) {
   const raw = safeText(value);
+  const phone = extractFirstPhone(raw);
+  const dial = phone ? `tel:${digitsOnlyPhone(phone)}` : "";
+  const valueHtml = phone
+    ? escapeHtml(raw).replace(
+        escapeHtml(phone),
+        `<a class="factPhoneLink" href="${dial}" aria-label="${escapeHtml(label)} 전화걸기">${escapeHtml(phone)}</a>`,
+      )
+    : escapeHtml(raw);
   return `
     <button
       class="fact fact--btn"
@@ -555,7 +585,7 @@ function factBox(label, value) {
       data-popup-content="${encodeURIComponent(raw)}"
     >
       <div class="fact__k">${escapeHtml(label)}</div>
-      <div class="fact__v" title="${escapeHtml(raw)}">${escapeHtml(raw)}</div>
+      <div class="fact__v" title="${escapeHtml(raw)}">${valueHtml}</div>
     </button>
   `;
 }
@@ -715,12 +745,30 @@ els.searchInput.addEventListener("input", () => {
 });
 
 els.grid.addEventListener("click", (e) => {
+  if (e.target.closest('a[href^="tel:"]')) {
+    e.stopPropagation();
+    return;
+  }
   const btn = e.target.closest("[data-action]");
   if (!btn) return;
   const action = btn.dataset.action;
+  if (action === "call-selected") {
+    const targetId = btn.dataset.targetId || "";
+    const select = document.getElementById(targetId);
+    if (!select) return;
+    const phone = extractFirstPhone(select.value || "");
+    if (!phone) return;
+    window.location.href = `tel:${digitsOnlyPhone(phone)}`;
+    return;
+  }
   if (action === "show-text") {
     const title = btn.dataset.popupTitle || "상세";
     const content = decodeURIComponent(btn.dataset.popupContent || "");
+    const phone = extractFirstPhone(content);
+    if (phone && /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+      window.location.href = `tel:${digitsOnlyPhone(phone)}`;
+      return;
+    }
     openTextDialog(title, content);
     return;
   }
