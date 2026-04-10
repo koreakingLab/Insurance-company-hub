@@ -1607,8 +1607,8 @@ export const BASE_COMPANIES = [
           "phone": ""
         },
         {
-          "name": "홍길순",
-          "phone": "010-1111-2222"
+          "name": "",
+          "phone": ""
         },
         {
           "name": "",
