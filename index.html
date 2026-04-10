@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>보험회사 정보 한눈에 보기</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="bg"></div>
+
+    <header class="top">
+      <div class="container">
+        <div class="top__row">
+          <div class="brand">
+            <div class="brand__logo" aria-hidden="true">i</div>
+            <div class="brand__text">
+              <div class="brand__title">보험회사 정보</div>
+              <div class="brand__sub">손해보험 · 생명보험 · 공제회사</div>
+            </div>
+          </div>
+
+          <div class="top__actions">
+            <button id="resetBtn" class="btn btn--ghost" type="button">
+              초기화
+            </button>
+          </div>
+        </div>
+
+        <div class="controls">
+          <nav class="tabs" aria-label="카테고리">
+            <button
+              class="tab is-active"
+              type="button"
+              data-category="all"
+              aria-current="true"
+            >
+              전체
+            </button>
+            <button class="tab" type="button" data-category="nonlife">
+              손해보험
+            </button>
+            <button class="tab" type="button" data-category="life">
+              생명보험
+            </button>
+            <button class="tab" type="button" data-category="mutual">
+              공제회사
+            </button>
+          </nav>
+
+          <label class="search">
+            <span class="search__label">검색</span>
+            <input
+              id="searchInput"
+              class="search__input"
+              type="search"
+              placeholder="회사명으로 검색 (예: 삼성, DB, 한화...)"
+              autocomplete="off"
+            />
+          </label>
+        </div>
+      </div>
+    </header>
+
+    <main class="container">
+      <div class="meta">
+        <div id="resultCount" class="meta__count"></div>
+        <div class="meta__hint">
+          카드의 <b>수정</b> 버튼으로 내용을 바꾸면 브라우저에 저장됩니다.
+        </div>
+      </div>
+
+      <section id="grid" class="grid" aria-label="보험회사 카드"></section>
+    </main>
+
+    <dialog id="editDialog" class="dialog">
+      <form id="editForm" class="dialog__panel" method="dialog">
+        <div class="dialog__head">
+          <div class="dialog__title" id="dialogTitle">보험회사 정보 수정</div>
+          <button class="iconBtn" type="button" id="closeDialogBtn" aria-label="닫기">
+            ✕
+          </button>
+        </div>
+
+        <div class="dialog__body">
+          <input type="hidden" name="id" />
+
+          <div class="formGrid">
+            <div class="field">
+              <label class="field__label">회사명</label>
+              <input class="field__input" name="name" required />
+            </div>
+
+            <div class="field">
+              <label class="field__label">카테고리</label>
+              <select class="field__input" name="categoryId" required>
+                <option value="nonlife">손해보험</option>
+                <option value="life">생명보험</option>
+                <option value="mutual">공제회사</option>
+              </select>
+            </div>
+
+            <div class="field field--wide">
+              <label class="field__label">회사 로고/이미지 URL</label>
+              <input class="field__input" name="logoUrl" placeholder="https://..." />
+            </div>
+
+            <div class="field field--wide">
+              <label class="field__label">회사 홈페이지 URL</label>
+              <input class="field__input" name="homepageUrl" placeholder="https://..." />
+            </div>
+
+            <div class="field field--wide">
+              <label class="field__label">전산링크 URL</label>
+              <input class="field__input" name="systemLinkUrl" placeholder="https://..." />
+            </div>
+
+            <div class="field">
+              <label class="field__label">고객센터</label>
+              <input class="field__input" name="callCenter" />
+            </div>
+
+            <div class="field">
+              <label class="field__label">인콜 모니터링</label>
+              <input class="field__input" name="inCallMonitoring" />
+            </div>
+
+            <div class="field">
+              <label class="field__label">전산 헬프데스크</label>
+              <input class="field__input" name="helpdesk" />
+            </div>
+
+            <div class="field">
+              <label class="field__label">청구팩스</label>
+              <input class="field__input" name="claimFax" />
+            </div>
+
+            <div class="field field--wide">
+              <label class="field__label">약관확인 링크</label>
+              <input class="field__input" name="termsUrl" placeholder="https://..." />
+            </div>
+
+            <div class="field field--wide">
+              <label class="field__label">보험금 청구서 양식 링크</label>
+              <input class="field__input" name="claimFormUrl" placeholder="https://..." />
+            </div>
+
+            <div class="divider"></div>
+
+            <div class="field">
+              <label class="field__label">지점장 이름</label>
+              <input class="field__input" name="roles.branchManager.name" />
+            </div>
+            <div class="field">
+              <label class="field__label">지점장 연락처</label>
+              <input class="field__input" name="roles.branchManager.phone" />
+            </div>
+
+            <div class="field">
+              <label class="field__label">매니저 이름</label>
+              <input class="field__input" name="roles.manager.name" />
+            </div>
+            <div class="field">
+              <label class="field__label">매니저 연락처</label>
+              <input class="field__input" name="roles.manager.phone" />
+            </div>
+
+            <div class="field">
+              <label class="field__label">총무 이름</label>
+              <input class="field__input" name="roles.admin.name" />
+            </div>
+            <div class="field">
+              <label class="field__label">총무 연락처</label>
+              <input class="field__input" name="roles.admin.phone" />
+            </div>
+          </div>
+        </div>
+
+        <div class="dialog__foot">
+          <button class="btn btn--ghost" type="button" id="deleteBtn">
+            삭제
+          </button>
+          <div class="spacer"></div>
+          <button class="btn btn--ghost" type="button" id="cancelBtn">취소</button>
+          <button class="btn btn--primary" type="submit">저장</button>
+        </div>
+      </form>
+    </dialog>
+
+    <button id="addBtn" class="fab" type="button" aria-label="보험회사 추가">
+      + 추가
+    </button>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
+
